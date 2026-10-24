@@ -173,6 +173,35 @@ def cmd_reply(args) -> int:
     return 0
 
 
+def cmd_agent(args) -> int:
+    """Run the agent. It decides what, if anything, is worth telling you."""
+    from agent.loop import run
+
+    result = run(
+        instruction=args.ask,
+        max_messages=args.max_messages,
+        effort=args.effort,
+    )
+
+    print(f"tools used: {', '.join(result.tool_calls) or 'none'}")
+    print(f"messages sent: {result.messages_sent}")
+    print(
+        f"tokens: in={result.input_tokens:,} out={result.output_tokens:,} "
+        f"(~${result.cost_estimate():.3f})"
+    )
+    if result.proposals:
+        print("\nproposals:")
+        for a in result.proposals:
+            print(f"  [{a.code}] {a.summary}")
+    if result.insights:
+        print("\ninsights:")
+        for m in result.insights:
+            print(f"  {m}")
+    print("\n--- agent summary ---")
+    print(result.summary or "(no closing summary)")
+    return 0
+
+
 def cmd_listen(args) -> int:
     """
     Watch for replies and apply them.
@@ -249,6 +278,13 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("reply", help="simulate an inbound SMS reply")
     p.add_argument("text")
     p.set_defaults(func=cmd_reply)
+
+    p = sub.add_parser("agent", help="run the agent")
+    p.add_argument("--ask", help="a specific question instead of the routine check")
+    p.add_argument("--max-messages", type=int, default=3)
+    p.add_argument("--effort", default="medium",
+                   choices=["low", "medium", "high", "xhigh", "max"])
+    p.set_defaults(func=cmd_agent)
 
     p = sub.add_parser("listen", help="watch for replies and apply them")
     p.add_argument("--seconds", type=int, help="stop after N seconds (default: forever)")

@@ -20,6 +20,7 @@ from typing import Any
 import httpx
 
 from espn.models import (
+    DEDICATED_SLOT,
     ELIGIBLE_SLOTS,
     League,
     Matchup,
@@ -63,6 +64,7 @@ class ESPNClient:
         if espn_s2 and swid:
             cookies = {"espn_s2": espn_s2, "SWID": swid}
         self._authenticated = bool(cookies)
+        self._week_cache: int | None = None
         self._client = httpx.Client(
             cookies=cookies,
             timeout=timeout,
@@ -171,6 +173,64 @@ class ESPNClient:
             return name
         pair = f"{team.get('location', '')} {team.get('nickname', '')}".strip()
         return pair or f"Team {team.get('id')}"
+
+    def free_agents(
+        self,
+        *,
+        positions: tuple[Position, ...] | None = None,
+        limit: int = 50,
+        week: int | None = None,
+    ) -> list[Player]:
+        """
+        Players available to claim: free agents and those on waivers.
+
+        ESPN exposes this through `kona_player_info`, filtered by an
+        `x-fantasy-filter` header rather than query parameters -- a JSON blob
+        in a header, which is unusual enough to be worth naming. Sorted by
+        percent-owned, which is a decent proxy for "who the rest of the world
+        has already noticed".
+        """
+        import json
+
+        slot_ids = [
+            int(DEDICATED_SLOT[p]) for p in (positions or ()) if p in DEDICATED_SLOT
+        ]
+
+        players_filter: dict = {
+            "filterStatus": {"value": ["FREEAGENT", "WAIVERS"]},
+            "limit": limit,
+            "sortPercOwned": {"sortAsc": False, "sortPriority": 1},
+        }
+        if slot_ids:
+            players_filter["filterSlotIds"] = {"value": sorted(set(slot_ids))}
+
+        data = self._get(
+            params=[("view", "kona_player_info")],
+            headers={"x-fantasy-filter": json.dumps({"players": players_filter})},
+        )
+
+        # The free-agent response carries no scoringPeriodId, so the caller
+        # must supply the week -- defaulting to 1 silently yielded 0.0
+        # projections for everyone.
+        target_week = week or data.get("scoringPeriodId") or self._current_week()
+        out: list[Player] = []
+        for entry in data.get("players") or []:
+            # Free-agent entries nest the player one level shallower than
+            # roster entries do, so reuse the parser with a matching shape.
+            player = self._parse_player(
+                {"playerPoolEntry": entry, "lineupSlotId": int(Slot.BENCH)},
+                target_week,
+            )
+            if player:
+                out.append(player)
+        return out
+
+    def _current_week(self) -> int:
+        """Cached current scoring period, fetched once per client."""
+        if self._week_cache is None:
+            data = self._get(params=[("view", "mSettings")])
+            self._week_cache = int(data.get("scoringPeriodId") or 1)
+        return self._week_cache
 
     def league(self) -> League:
         """Fetch and parse the whole league: teams, rosters, matchups, settings."""

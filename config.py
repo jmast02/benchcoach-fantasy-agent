@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     # write host; proposed changes are recorded and displayed only.
     dry_run: bool = True
 
+    # The agent's model. Opus for judgement calls; this is the only paid
+    # component in the project.
+    agent_model: str = "claude-opus-5"
+
     # --- Telegram (preferred: free, instant, real buttons) ------------------
     # Replies arrive by long-polling, so unlike SMS this needs no public URL
     # and no carrier registration.

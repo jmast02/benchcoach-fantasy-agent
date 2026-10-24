@@ -86,6 +86,18 @@ ELIGIBLE_SLOTS: dict[Position, frozenset[Slot]] = {
     Position.DST: frozenset({Slot.DST, Slot.BENCH, Slot.IR}),
 }
 
+# The one slot a position exclusively owns. Used to filter the free-agent
+# pool: filtering on *eligible* slots is far too broad, because RB eligibility
+# includes FLEX, and asking for RBs then returns every WR and TE as well.
+DEDICATED_SLOT: dict[Position, Slot] = {
+    Position.QB: Slot.QB,
+    Position.RB: Slot.RB,
+    Position.WR: Slot.WR,
+    Position.TE: Slot.TE,
+    Position.K: Slot.K,
+    Position.DST: Slot.DST,
+}
+
 # ESPN sends injury status as a string on the player object.
 INJURY_OUT = frozenset({"OUT", "INJURY_RESERVE", "SUSPENSION", "NOT_ACTIVE"})
 INJURY_RISKY = frozenset({"QUESTIONABLE", "DOUBTFUL"})
