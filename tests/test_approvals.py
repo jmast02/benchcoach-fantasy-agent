@@ -162,6 +162,24 @@ def test_duplicate_proposals_are_suppressed(service):
     assert len(service.channel.sent) == 1
 
 
+def test_an_ignored_proposal_does_not_block_future_ones(service):
+    """
+    Regression: the duplicate check looked only at pending actions and never
+    expired them, so a proposal you ignored would suppress every later
+    proposal for that player permanently.
+    """
+    stale = PendingAction(
+        kind=ActionKind.LINEUP_SWAP, summary="s", reason="r",
+        payload=_swap().to_dict(),
+        expires_at=dt.datetime.now(dt.UTC) - dt.timedelta(minutes=1),
+    )
+    service.store.create(stale)
+
+    fresh = service.propose_swap(_swap(), reason="r", expires_at=_later())
+    assert fresh is not None, "an expired proposal must not suppress a new one"
+    assert service.store.get(stale.action_id).status is ActionStatus.EXPIRED
+
+
 def test_answering_twice_is_handled(service):
     action = service.propose_swap(_swap(), reason="r", expires_at=_later())
     service.handle_reply(f"YES {action.code}")

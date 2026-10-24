@@ -129,6 +129,12 @@ class ApprovalService:
         re-asking the same question every scheduler tick is how an agent earns
         itself a mute.
         """
+        # Sweep expired actions before the duplicate check. Without this an
+        # unanswered proposal stays "pending" forever and permanently
+        # suppresses every future proposal for that player -- one ignored
+        # message would silently retire the agent for that slot.
+        self.store.expire_stale()
+
         key = f'"out_player_id": {swap.out_player_id}'
         if self.store.has_open_duplicate(ActionKind.LINEUP_SWAP, key):
             logger.info("skipping duplicate proposal for %s", swap.out_name)
@@ -136,7 +142,13 @@ class ApprovalService:
 
         action = PendingAction(
             kind=ActionKind.LINEUP_SWAP,
-            summary=f"Start {swap.in_name} over {swap.out_name} (+{swap.gain})",
+            # Sign has to be formatted, not assumed positive. Most swaps are
+            # upgrades, but an injury swap can legitimately cost projected
+            # points -- and "(+-5.2)" is how that looked before this.
+            summary=(
+                f"Start {swap.in_name} over {swap.out_name} "
+                f"({swap.gain:+.1f})"
+            ),
             reason=reason,
             payload=swap.to_dict(),
             expires_at=expires_at,
@@ -145,7 +157,12 @@ class ApprovalService:
 
         if send:
             try:
-                self.channel.send(action.message())
+                # Richer channels render buttons; the rest fall back to text.
+                sender = getattr(self.channel, "send_approval", None)
+                if callable(sender):
+                    sender(action)
+                else:
+                    self.channel.send(action.message())
             except Exception as exc:
                 logger.error("could not send approval request: %s", exc)
                 self.store.set_status(

@@ -38,6 +38,9 @@ class ConsoleChannel:
     def __init__(self) -> None:
         self.sent: list[str] = []
 
+    def send_approval(self, action) -> str | None:
+        return self.send(action.message())
+
     def send(self, body: str) -> str | None:
         self.sent.append(body)
         print("\n" + "=" * 54)
@@ -73,6 +76,10 @@ class TwilioSMSChannel:
         self.from_number = from_number
         self.to_number = to_number
         self._client = httpx.Client(timeout=timeout, auth=(account_sid, auth_token))
+
+    def send_approval(self, action) -> str | None:
+        # SMS has no buttons; the message body already explains how to reply.
+        return self.send(action.message())
 
     def send(self, body: str) -> str | None:
         url = f"{TWILIO_BASE}/Accounts/{self.account_sid}/Messages.json"
@@ -132,15 +139,19 @@ def twiml(message: str | None = None) -> str:
 
 
 def build_channel(settings) -> Channel:
-    """Twilio if it is fully configured, console otherwise."""
-    if all(
-        [
-            settings.twilio_account_sid,
-            settings.twilio_auth_token,
-            settings.twilio_from_number,
-            settings.my_phone_number,
-        ]
-    ):
+    """
+    Pick the best configured channel.
+
+    Telegram first: it needs no carrier registration, no public URL, and gives
+    real buttons. SMS second, for anyone who has cleared A2P 10DLC. Console
+    last, which keeps the whole loop testable with nothing configured at all.
+    """
+    if getattr(settings, "telegram_configured", False):
+        from approvals.telegram import TelegramChannel
+
+        return TelegramChannel(settings.telegram_bot_token, settings.telegram_chat_id)
+
+    if getattr(settings, "sms_configured", False):
         return TwilioSMSChannel(
             settings.twilio_account_sid,
             settings.twilio_auth_token,

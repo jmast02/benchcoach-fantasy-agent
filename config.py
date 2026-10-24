@@ -23,6 +23,16 @@ class Settings(BaseSettings):
     # write host; proposed changes are recorded and displayed only.
     dry_run: bool = True
 
+    # --- Telegram (preferred: free, instant, real buttons) ------------------
+    # Replies arrive by long-polling, so unlike SMS this needs no public URL
+    # and no carrier registration.
+    telegram_bot_token: str | None = None
+    telegram_chat_id: int | None = None
+
+    @property
+    def telegram_configured(self) -> bool:
+        return bool(self.telegram_bot_token and self.telegram_chat_id)
+
     # --- SMS (optional; without it the console channel is used) -------------
     twilio_account_sid: str | None = None
     twilio_auth_token: str | None = None

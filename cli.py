@@ -173,6 +173,47 @@ def cmd_reply(args) -> int:
     return 0
 
 
+def cmd_listen(args) -> int:
+    """
+    Watch for replies and apply them.
+
+    Long-polls Telegram, so no public URL or tunnel is needed. Each answered
+    message has its buttons stripped afterwards, so an old proposal cannot be
+    tapped a second time and leave you unsure which answer counted.
+    """
+    import time
+
+    service = _service()
+    channel = service.channel
+    if not hasattr(channel, "poll"):
+        print(
+            f"The {channel.name} channel can't receive replies. "
+            "Configure Telegram, or use `python -m cli reply` by hand.",
+            file=sys.stderr,
+        )
+        return 2
+
+    print(f"listening on {channel.name} (ctrl-c to stop)")
+    deadline = time.monotonic() + args.seconds if args.seconds else None
+    try:
+        while deadline is None or time.monotonic() < deadline:
+            for event in channel.poll(timeout=args.poll_timeout):
+                text = event.get("text", "")
+                source = "button" if event.get("from_button") else "typed"
+                answer = service.handle_reply(text)
+                print(f"  <- {text!r} ({source})")
+                print(f"  -> {answer}")
+                try:
+                    channel.send(answer)
+                except Exception as exc:
+                    print(f"     (could not confirm back: {exc})", file=sys.stderr)
+                if event.get("from_button") and event.get("message_id"):
+                    channel.clear_buttons(event["message_id"])
+    except KeyboardInterrupt:
+        print("\nstopped")
+    return 0
+
+
 def cmd_pending(args) -> int:
     service = _service()
     service.store.expire_stale()
@@ -208,6 +249,11 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("reply", help="simulate an inbound SMS reply")
     p.add_argument("text")
     p.set_defaults(func=cmd_reply)
+
+    p = sub.add_parser("listen", help="watch for replies and apply them")
+    p.add_argument("--seconds", type=int, help="stop after N seconds (default: forever)")
+    p.add_argument("--poll-timeout", type=int, default=25)
+    p.set_defaults(func=cmd_listen)
 
     p = sub.add_parser("pending", help="show proposals and their outcomes")
     p.add_argument("--limit", type=int, default=15)
