@@ -298,6 +298,7 @@ class ESPNClient:
                 )
             )
 
+        schedule_settings = settings.get("scheduleSettings") or {}
         return League(
             league_id=self.league_id,
             season=self.season,
@@ -306,4 +307,9 @@ class ESPNClient:
             teams=teams,
             matchups=matchups,
             roster_slots=slot_counts,
+            playoff_teams=int(schedule_settings.get("playoffTeamCount") or 6),
+            regular_season_weeks=int(
+                schedule_settings.get("matchupPeriodCount")
+                or (max((m.week for m in matchups), default=14))
+            ),
         )

@@ -232,6 +232,42 @@ def cmd_job(args) -> int:
     return 0
 
 
+def cmd_due(args) -> int:
+    """
+    Run whichever job is scheduled for roughly now.
+
+    Entry point for launchd, which knows the times but not which job belongs
+    to each. Matches on weekday and hour so a slightly late wake still runs
+    the right slot.
+    """
+    import datetime as dt
+    from zoneinfo import ZoneInfo
+
+    from scheduler.jobs import DEFAULT_TZ, JOBS, run_job
+
+    now = dt.datetime.now(ZoneInfo(args.timezone or DEFAULT_TZ))
+    day = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"][now.weekday()]
+
+    due = [
+        j for j in JOBS
+        if j.day == day and abs((j.hour * 60 + j.minute) - (now.hour * 60 + now.minute)) <= 45
+    ]
+    if not due:
+        print(f"{now:%a %H:%M}: nothing scheduled near now")
+        return 0
+
+    for job in due:
+        print(f"{now:%a %H:%M}: running {job.name}")
+        try:
+            result = run_job(job)
+            print(f"  {result.messages_sent} message(s), ~${result.cost_estimate():.3f}")
+            if result.summary:
+                print(f"  {result.summary[:400]}")
+        except Exception as exc:
+            print(f"  FAILED: {exc}", file=sys.stderr)
+    return 0
+
+
 def cmd_schedule(args) -> int:
     """Run the scheduler in the foreground."""
     import logging
@@ -332,6 +368,10 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("job", help="run a scheduled job now, or list them")
     p.add_argument("name", nargs="?", help="job name, or 'list'")
     p.set_defaults(func=cmd_job)
+
+    p = sub.add_parser("due", help="run whatever job is scheduled for now (launchd entry point)")
+    p.add_argument("--timezone")
+    p.set_defaults(func=cmd_due)
 
     p = sub.add_parser("schedule", help="run all jobs on their schedule")
     p.add_argument("--timezone", help="default America/New_York")

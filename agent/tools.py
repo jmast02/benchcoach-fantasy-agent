@@ -28,6 +28,7 @@ from analysis.league_intel import (
 )
 from analysis.optimizer import bench_upgrades
 from analysis.schedule import defense_schedule_outlook, offense_strength
+from analysis.standings import my_rivals, playoff_picture, trade_leverage
 from analysis.startsit import matchup_strategy, outlook
 from approvals.models import LineupSwap
 from espn.models import DEDICATED_SLOT, League, Position, Team
@@ -406,6 +407,72 @@ def get_opponent_lineup() -> str:
     return "\n".join(lines)
 
 
+@beta_tool
+def get_playoff_picture() -> str:
+    """The league standings, playoff race, and each team's remaining schedule.
+
+    Shows where every team sits relative to the playoff cut, how hard their
+    remaining opponents are, and which teams you still have to play. Use this
+    to judge urgency -- a move that matters in a tight race may not matter at
+    all if you are comfortably clear.
+    """
+    ctx = _require()
+    races = playoff_picture(ctx.league, ctx.team.team_id)
+    lines = [
+        f"{ctx.league.playoff_teams} of {len(ctx.league.teams)} teams make the "
+        f"playoffs. Week {ctx.league.current_week} of "
+        f"{ctx.league.regular_season_weeks}.",
+        "",
+    ]
+    for race in races:
+        marker = "  <- you" if race.team.team_id == ctx.team.team_id else ""
+        lines.append(
+            f"  #{race.rank:2} {race.team.name[:26]:28} {race.team.record:5} "
+            f"{race.games_back:+.0f} from cut, remaining opp avg "
+            f"{race.remaining_sos:.1f} pts/g, {race.status}{marker}"
+        )
+    return "\n".join(lines)
+
+
+@beta_tool
+def get_my_rivals() -> str:
+    """Teams genuinely competing with you for a playoff spot.
+
+    Only teams within a game of you that are neither safe nor eliminated --
+    those are not racing you whatever the table says. Includes the weeks you
+    still play them, which is when a head-to-head result counts double.
+    """
+    ctx = _require()
+    rivals = my_rivals(ctx.league, ctx.team.team_id)
+    if not rivals:
+        return "Nobody is within a game of you in the race right now."
+    return "Teams racing you:\n" + "\n".join(f"  {r.describe()}" for r in rivals)
+
+
+@beta_tool
+def get_trade_postures() -> str:
+    """How willing each team is to trade, and on what terms.
+
+    A team that is mathematically fading will take less than market value for
+    a good player; a desperate team overpays for immediate help; a team racing
+    you should not be helped at all. This is what makes an offer land rather
+    than get ignored.
+    """
+    ctx = _require()
+    rows = trade_leverage(ctx.league, ctx.team.team_id)
+    lines = []
+    for row in rows:
+        again = (
+            f" (you play them again {', '.join('wk' + str(w) for w in row['plays_me_again'])})"
+            if row["plays_me_again"]
+            else ""
+        )
+        lines.append(
+            f"  {row['team'].name[:26]:28} {row['status']:11} — {row['posture']}{again}"
+        )
+    return "Trade postures:\n" + "\n".join(lines)
+
+
 # ------------------------------------------------------------------- actions
 
 @beta_tool
@@ -514,6 +581,9 @@ READ_TOOLS = [
     get_league_situation,
     get_waiver_competition,
     get_schedule_outlook,
+    get_playoff_picture,
+    get_my_rivals,
+    get_trade_postures,
 ]
 ACTION_TOOLS = [propose_lineup_swap, send_insight]
 ALL_TOOLS = READ_TOOLS + ACTION_TOOLS

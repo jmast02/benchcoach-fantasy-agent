@@ -198,6 +198,11 @@ class League:
     # optimizer -- leagues differ and this cannot be assumed.
     roster_slots: dict[Slot, int] = field(default_factory=dict)
 
+    # Playoff structure, read from league settings rather than assumed --
+    # a 4-team and a 6-team playoff make completely different advice correct.
+    playoff_teams: int = 6
+    regular_season_weeks: int = 14
+
     def team(self, team_id: int) -> Team | None:
         return next((t for t in self.teams if t.team_id == team_id), None)
 
