@@ -28,6 +28,7 @@ from analysis.league_intel import (
 )
 from analysis.optimizer import bench_upgrades
 from analysis.schedule import defense_schedule_outlook, offense_strength
+from analysis.startsit import matchup_strategy, outlook
 from approvals.models import LineupSwap
 from espn.models import DEDICATED_SLOT, League, Position, Team
 from stats.nflverse import injury_detail
@@ -306,6 +307,105 @@ def get_schedule_outlook(team_or_defense: str, weeks: int = 3) -> str:
     )
 
 
+@beta_tool
+def analyze_player(player_name: str) -> str:
+    """Everything about a player's week that his projection does not capture.
+
+    Opponent and how that defense performs against his position, the Vegas-
+    implied game script, his floor and ceiling this season, and his usage
+    trend. Use this whenever a start-sit decision is closer than the
+    projections suggest, or when a projection looks wrong.
+
+    Args:
+        player_name: Full or partial name of a player on your roster.
+    """
+    ctx = _require()
+    player = _find_player(player_name)
+    if player is None:
+        return f"No player matching {player_name!r} on your roster."
+    return outlook(
+        player, week=ctx.league.current_week, trends=ctx.trends
+    ).describe()
+
+
+@beta_tool
+def compare_start_sit(player_a: str, player_b: str) -> str:
+    """Compare two of your players side by side, beyond their projections.
+
+    Returns the evidence for both -- matchup, script, floor and ceiling, usage
+    trend -- plus whether this week calls for safety or upside. The decision is
+    yours to make from it; this does not pick.
+
+    Args:
+        player_a: First player's name.
+        player_b: Second player's name.
+    """
+    ctx = _require()
+    first, second = _find_player(player_a), _find_player(player_b)
+    if first is None:
+        return f"No player matching {player_a!r}."
+    if second is None:
+        return f"No player matching {player_b!r}."
+
+    week = ctx.league.current_week
+    blocks = [
+        outlook(first, week=week, trends=ctx.trends).describe(),
+        outlook(second, week=week, trends=ctx.trends).describe(),
+    ]
+
+    report = scout_opponent(ctx.league, ctx.team.team_id)
+    if report:
+        strategy = matchup_strategy(ctx.team, report.opponent)
+        blocks.append(f"This week's stance: {strategy.stance} — {strategy.advice()}")
+    return "\n\n".join(blocks)
+
+
+@beta_tool
+def get_matchup_strategy() -> str:
+    """Whether this week calls for the safe lineup or the high-variance one.
+
+    Compares your projected total against your opponent's. A large lead means
+    variance is your enemy; a large deficit means the safe lineup loses slowly
+    and you need ceiling.
+    """
+    ctx = _require()
+    report = scout_opponent(ctx.league, ctx.team.team_id)
+    if report is None:
+        return "No matchup found for this week (bye?)."
+    strategy = matchup_strategy(ctx.team, report.opponent)
+    return (
+        f"You {strategy.my_total} vs {report.opponent.name} {strategy.their_total} "
+        f"(margin {strategy.margin:+.1f}, stance: {strategy.stance})\n"
+        f"{strategy.advice()}\n"
+        f"{report.summary()}"
+    )
+
+
+@beta_tool
+def get_opponent_lineup() -> str:
+    """Your opponent's starting lineup this week, with projections and injuries.
+
+    Use it to see where they are weak, where the game is likely decided, and
+    whether their projected total is propped up by someone who may not play.
+    """
+    ctx = _require()
+    report = scout_opponent(ctx.league, ctx.team.team_id)
+    if report is None:
+        return "No matchup this week."
+    opponent = report.opponent
+    lines = [f"{opponent.name} ({opponent.record}) — projected {report.projected_total}", ""]
+    for p in sorted(opponent.starters, key=lambda p: p.slot):
+        tag = f"  [{p.injury_status}]" if p.injury_status and p.injury_status != "ACTIVE" else ""
+        lines.append(
+            f"  {p.slot_name:5} {p.position_name:5} {p.name:24} "
+            f"proj {p.projected_points or 0:.1f}{tag}"
+        )
+    if report.exposure:
+        lines.append("")
+        lines.append(report.summary())
+    return "\n".join(lines)
+
+
 # ------------------------------------------------------------------- actions
 
 @beta_tool
@@ -406,6 +506,10 @@ READ_TOOLS = [
     get_my_roster,
     get_player_detail,
     get_bench_upgrades,
+    analyze_player,
+    compare_start_sit,
+    get_matchup_strategy,
+    get_opponent_lineup,
     get_available_players,
     get_league_situation,
     get_waiver_competition,
