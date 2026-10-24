@@ -1,0 +1,81 @@
+:root {
+  --bg:#f7f7f5; --panel:#fff; --panel-2:#f0f0ed; --border:#e3e3de;
+  --text:#1a1a18; --muted:#6b6b64; --faint:#9b9b93;
+  --accent:#1f6f4a; --accent-soft:#e4f0ea;
+  --out:#b3382c; --out-soft:#fbeae8;
+  --risky:#9a6a10; --risky-soft:#fdf4e2;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme=light]) {
+    --bg:#151618; --panel:#1d1e21; --panel-2:#25262a; --border:#323338;
+    --text:#e9e9e5; --muted:#a2a29a; --faint:#74746d;
+    --accent:#64bd92; --accent-soft:#1b2c24;
+    --out:#e8705f; --out-soft:#2d1a17;
+    --risky:#d9a441; --risky-soft:#2b2317;
+  }
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);
+  font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+a{color:var(--accent);text-decoration:none} a:hover{text-decoration:underline}
+code,.mono{font-family:var(--mono);font-size:.88em}
+.wrap{max-width:1040px;margin:0 auto;padding:0 20px 64px}
+
+header.site{border-bottom:1px solid var(--border);background:var(--panel);margin-bottom:24px}
+header.site .wrap{padding:16px 20px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+header.site h1{font-size:17px;margin:0;letter-spacing:-.01em}
+header.site .tag{color:var(--muted);font-size:13px}
+header.site .right{margin-left:auto;display:flex;gap:14px;align-items:baseline;font-size:13px;color:var(--muted)}
+
+.pill{font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:20px;
+  background:var(--panel-2);border:1px solid var(--border);color:var(--muted)}
+.pill.live{background:var(--out-soft);border-color:var(--out);color:var(--out)}
+.pill.dry{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+
+.grid{display:grid;grid-template-columns:1fr 320px;gap:18px;align-items:start}
+@media (max-width:860px){.grid{grid-template-columns:1fr}}
+
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:10px;
+  padding:16px 18px;margin-bottom:18px}
+.panel h2{margin:0 0 2px;font-size:12.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.panel .hint{color:var(--faint);font-size:12.5px;margin:0 0 12px}
+
+/* alerts */
+.alert{border-radius:8px;padding:12px 14px;margin-bottom:10px;border:1px solid}
+.alert.out{background:var(--out-soft);border-color:var(--out)}
+.alert.risky{background:var(--risky-soft);border-color:var(--risky)}
+.alert.zero{background:var(--panel-2);border-color:var(--border)}
+.alert .who{font-weight:650}
+.alert .detail{font-size:13px;color:var(--muted);margin-top:2px}
+.alert .fix{font-size:13px;margin-top:8px;padding-top:8px;border-top:1px dashed var(--border)}
+.alert .fix b{font-weight:600}
+
+/* roster */
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{padding:6px 8px;border-bottom:1px solid var(--border);text-align:left;white-space:nowrap}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600}
+td.num,th.num{text-align:right;font-family:var(--mono);font-size:13px}
+tr.bench td{color:var(--muted)}
+tr.flagged{background:var(--out-soft)}
+tr.warn{background:var(--risky-soft)}
+.slot{font-family:var(--mono);font-size:11.5px;color:var(--muted);width:48px}
+.pos{font-family:var(--mono);font-size:11.5px;color:var(--faint);width:40px}
+.status{font-family:var(--mono);font-size:10.5px;padding:1px 6px;border-radius:3px;margin-left:6px}
+.status.out{background:var(--out);color:#fff}
+.status.risky{background:var(--risky);color:#fff}
+.divider td{padding:3px 0;border:0}
+
+/* standings */
+.standings{font-size:13.5px}
+.standings td,.standings th{padding:5px 7px}
+.standings tr.me{background:var(--accent-soft);font-weight:600}
+.standings .rec{font-family:var(--mono);font-size:12.5px}
+
+.matchup{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;font-size:14px}
+.matchup .vs{color:var(--faint);font-size:12px}
+
+footer.site{color:var(--faint);font-size:12px;border-top:1px solid var(--border);
+  padding-top:14px;margin-top:8px}
+.setup li{margin-bottom:10px}
+.setup code{background:var(--panel-2);padding:2px 6px;border-radius:4px}

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Benchcoach{% endblock %}</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="site">
+  <div class="wrap">
+    <h1>Benchcoach</h1>
+    <span class="tag">{% block subtitle %}your fantasy team, watched{% endblock %}</span>
+    <div class="right">
+      {% if settings.dry_run %}
+        <span class="pill dry">dry run &middot; nothing is written</span>
+      {% else %}
+        <span class="pill live">LIVE &middot; can write to ESPN</span>
+      {% endif %}
+    </div>
+  </div>
+</header>
+<div class="wrap">
+{% block content %}{% endblock %}
+  <footer class="site">
+    Reads ESPN's unofficial fantasy API. Personal tool for your own league.
+  </footer>
+</div>
+</body>
+</html>

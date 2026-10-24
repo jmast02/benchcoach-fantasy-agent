@@ -1,0 +1,31 @@
+[project]
+name = "benchcoach"
+version = "0.1.0"
+description = "An agent that manages your fantasy football team and texts you to approve"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "jinja2>=3.1",
+    "httpx>=0.27",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3", "ruff>=0.8", "respx>=0.21"]
+
+[tool.setuptools]
+py-modules = ["cli", "config"]
+packages = ["espn", "stats", "analysis", "agent", "approvals", "scheduler", "api"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block subtitle %}{{ league.name }} &middot; week {{ league.current_week }}{% endblock %}
+{% block content %}
+
+{% if not team %}
+  <div class="panel">
+    <h2>Pick your team</h2>
+    <p class="hint">Set <code>BENCHCOACH_TEAM_ID</code> in <code>.env</code> to one of these:</p>
+    <table class="standings">
+      {% for t in standings %}
+        <tr><td class="num">{{ t.team_id }}</td><td>{{ t.name }}</td>
+            <td>{{ t.owner or '-' }}</td><td class="rec">{{ t.record }}</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+{% else %}
+
+{% if upgrades %}
+<div class="panel">
+  <h2>Points on your bench</h2>
+  <p class="hint">
+    Straight projection arithmetic &mdash; no judgement involved, so no model is used.
+    Total available: <b>+{{ '%.1f'|format(upgrades|sum(attribute='gain')) }}</b> points.
+  </p>
+  {% for u in upgrades %}
+    <div class="alert zero">
+      <div class="who">
+        Start <b>{{ u['in'].name }}</b> over {{ u.out.name }}
+        <span class="mono" style="color:var(--accent)">+{{ '%.1f'|format(u.gain) }}</span>
+      </div>
+      <div class="detail">
+        {{ u.out.slot_name }} &middot;
+        {{ u.out.name }} {{ '%.1f'|format(u.out.projected_points or 0) }}
+        &rarr; {{ u['in'].name }} {{ '%.1f'|format(u['in'].projected_points or 0) }}
+      </div>
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if problems %}
+<div class="panel">
+  <h2>Needs your attention</h2>
+  <p class="hint">
+    Rule-based for now &mdash; the agent will decide what's worth texting you about.
+  </p>
+  {% for p in problems %}
+    <div class="alert {{ p.severity }}">
+      <div class="who">
+        {{ p.player.name }}
+        <span class="mono" style="color:var(--muted)">({{ p.player.position_name }}, starting at {{ p.player.slot_name }})</span>
+      </div>
+      <div class="detail">{{ p.detail }} &middot; projected {{ '%.1f'|format(p.player.projected_points or 0) }}</div>
+      {% set alts = alternatives.get(p.player.player_id) %}
+      {% if alts %}
+        <div class="fix">
+          Bench options for that slot:
+          {% for a in alts %}
+            <b>{{ a.name }}</b> ({{ '%.1f'|format(a.projected_points or 0) }}){% if not loop.last %}, {% endif %}
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="fix" style="color:var(--muted)">No healthy bench player is eligible for that slot.</div>
+      {% endif %}
+    </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="panel">
+  <h2>Lineup looks clean</h2>
+  <p class="hint">No starter is ruled out, questionable, or projected zero.</p>
+</div>
+{% endif %}
+
+<div class="grid">
+  <div>
+    <div class="panel">
+      <h2>{{ team.name }} &middot; {{ team.record }}</h2>
+      {% if opponent %}
+        <p class="hint">
+          Week {{ league.current_week }} vs <b>{{ opponent.name }}</b> ({{ opponent.record }})
+        </p>
+      {% endif %}
+      <table>
+        <thead><tr>
+          <th class="slot">slot</th><th class="pos">pos</th><th>player</th>
+          <th class="num">proj</th><th class="num">actual</th>
+        </tr></thead>
+        <tbody>
+        {% for p in team.starters|sort(attribute='slot') %}
+          <tr class="{% if p.is_out %}flagged{% elif p.is_risky or (p.projected_points is not none and p.projected_points <= 0) %}warn{% endif %}">
+            <td class="slot">{{ p.slot_name }}</td>
+            <td class="pos">{{ p.position_name }}</td>
+            <td>{{ p.name }}
+              {% if p.is_out %}<span class="status out">OUT</span>
+              {% elif p.is_risky %}<span class="status risky">{{ p.injury_status[:1] }}</span>{% endif %}
+            </td>
+            <td class="num">{{ '%.1f'|format(p.projected_points or 0) }}</td>
+            <td class="num">{% if p.actual_points is not none %}{{ '%.1f'|format(p.actual_points) }}{% else %}&ndash;{% endif %}</td>
+          </tr>
+        {% endfor %}
+          <tr class="divider"><td colspan="5"></td></tr>
+        {% for p in team.bench %}
+          <tr class="bench">
+            <td class="slot">BE</td>
+            <td class="pos">{{ p.position_name }}</td>
+            <td>{{ p.name }}
+              {% if p.is_out %}<span class="status out">OUT</span>
+              {% elif p.is_risky %}<span class="status risky">{{ p.injury_status[:1] }}</span>{% endif %}
+            </td>
+            <td class="num">{{ '%.1f'|format(p.projected_points or 0) }}</td>
+            <td class="num">&ndash;</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div>
+    <div class="panel">
+      <h2>League</h2>
+      <table class="standings">
+        <thead><tr><th>team</th><th class="num">rec</th><th class="num">PF</th></tr></thead>
+        <tbody>
+        {% for t in standings %}
+          <tr class="{% if t.team_id == team.team_id %}me{% endif %}">
+            <td>{{ t.name[:22] }}</td>
+            <td class="num rec">{{ t.record }}</td>
+            <td class="num">{{ '%.0f'|format(t.points_for) }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h2>Roster shape</h2>
+      <p class="hint">Read from your league settings, not assumed.</p>
+      <div>
+        {% for slot, n in league.roster_slots.items() %}
+          <span class="pill">{{ slot.name }} &times;{{ n }}</span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

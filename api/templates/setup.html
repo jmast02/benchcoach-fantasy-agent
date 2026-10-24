@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="panel setup">
+  <h2>Setup</h2>
+  {% if error %}<div class="alert out"><div class="who">Couldn't load your league</div>
+    <div class="detail">{{ error }}</div></div>{% endif %}
+  <p class="hint">Copy <code>.env.example</code> to <code>.env</code> and fill in:</p>
+  <ol>
+    <li><b>League id</b> — from your league URL:
+      <code>fantasy.espn.com/football/league?leagueId=<b>123456</b></code>.
+      Set <code>BENCHCOACH_LEAGUE_ID</code>.</li>
+    <li><b>Is your league private?</b> If yes you also need two session cookies.
+      Log in to ESPN, open DevTools → Application → Cookies → espn.com, and copy
+      <code>espn_s2</code> and <code>SWID</code> into
+      <code>BENCHCOACH_ESPN_S2</code> and <code>BENCHCOACH_SWID</code>.
+      <br><span class="hint">These are full account access, not API keys. They stay in
+      <code>.env</code>, which is gitignored — don't paste them anywhere else.</span></li>
+    <li><b>Your team id</b> — run <code>python -m cli teams</code> to list them, then set
+      <code>BENCHCOACH_TEAM_ID</code>.</li>
+  </ol>
+</div>
+{% endblock %}
