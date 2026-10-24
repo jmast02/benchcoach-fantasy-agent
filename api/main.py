@@ -13,22 +13,32 @@ and to prove the injury data is actually usable.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, Form, Request
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from analysis.optimizer import bench_alternatives, bench_upgrades, lineup_problems
+from approvals.channels import build_channel, twiml, validate_twilio_signature
+from approvals.service import ApprovalService
+from approvals.store import ActionStore
 from config import get_settings
 from espn.client import ESPNClient, ESPNError
-from espn.models import League, Player, Slot, Team
+from espn.models import League, Slot
+
+logger = logging.getLogger(__name__)
 
 BASE_DIR = Path(__file__).parent
 
 app = FastAPI(title="Benchcoach", docs_url="/api/docs")
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")
+
+store = ActionStore()
+approvals = ApprovalService(store, build_channel(get_settings()))
 
 
 def load_league() -> League:
@@ -43,97 +53,6 @@ def load_league() -> League:
         return client.league()
     finally:
         client.close()
-
-
-def lineup_problems(team: Team) -> list[dict]:
-    """
-    Starters who should not be starting.
-
-    Rule-based on purpose. The agent's job later is the hard part -- deciding
-    what to do about a `QUESTIONABLE` player, and whether it is worth
-    interrupting you. This just establishes that the signal is there.
-    """
-    problems: list[dict] = []
-    for player in team.starters:
-        if player.is_out:
-            problems.append(
-                {
-                    "player": player,
-                    "severity": "out",
-                    "detail": f"ruled {(player.injury_status or 'OUT').replace('_', ' ').lower()}",
-                }
-            )
-        elif player.is_risky:
-            problems.append(
-                {
-                    "player": player,
-                    "severity": "risky",
-                    "detail": (player.injury_status or "").lower(),
-                }
-            )
-        elif player.projected_points is not None and player.projected_points <= 0:
-            # A zero projection on a healthy starter usually means a bye week.
-            problems.append(
-                {"player": player, "severity": "zero", "detail": "projected 0.0 (bye?)"}
-            )
-    return problems
-
-
-def bench_alternatives(team: Team, player: Player) -> list[Player]:
-    """Healthy bench players who could legally take this player's slot."""
-    return sorted(
-        (
-            p
-            for p in team.bench
-            if p.can_play(player.slot) and not p.is_out and (p.projected_points or 0) > 0
-        ),
-        key=lambda p: -(p.projected_points or 0),
-    )[:3]
-
-
-def bench_upgrades(team: Team, *, min_gain: float = 1.0) -> list[dict]:
-    """
-    Points sitting on your bench.
-
-    For each starter, the best healthy bench player eligible for that slot who
-    out-projects him. Pure arithmetic -- no model needed, and no model should
-    be used, because the answer is exact.
-
-    Each bench player is offered for only one swap, so a single strong backup
-    does not get proposed as the fix for three different slots at once.
-    """
-    upgrades: list[dict] = []
-    claimed: set[int] = set()
-
-    candidates = sorted(
-        (p for p in team.bench if not p.is_out and (p.projected_points or 0) > 0),
-        key=lambda p: -(p.projected_points or 0),
-    )
-
-    for starter in sorted(team.starters, key=lambda p: (p.projected_points or 0)):
-        best = next(
-            (
-                c
-                for c in candidates
-                if c.player_id not in claimed
-                and c.can_play(starter.slot)
-                and (c.projected_points or 0) - (starter.projected_points or 0) >= min_gain
-            ),
-            None,
-        )
-        if best is not None:
-            claimed.add(best.player_id)
-            upgrades.append(
-                {
-                    "out": starter,
-                    "in": best,
-                    "gain": round(
-                        (best.projected_points or 0) - (starter.projected_points or 0), 1
-                    ),
-                }
-            )
-
-    return sorted(upgrades, key=lambda u: -u["gain"])
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -189,6 +108,59 @@ def index(request: Request):
     )
 
 
+@app.post("/sms/inbound")
+async def sms_inbound(request: Request, Body: str = Form(""), From: str = Form("")):
+    """
+    Twilio posts replies here.
+
+    This endpoint is public and it changes lineups, so it is guarded twice:
+    the request must carry a valid Twilio signature, and it must come from the
+    one phone number this agent answers to. Both checks fail closed.
+    """
+    settings = get_settings()
+    form = dict(await request.form())
+
+    if settings.twilio_auth_token:
+        # Twilio signs the exact URL it was configured with. Prefer the
+        # configured public URL over the request's own view of itself, which a
+        # proxy or tunnel will have rewritten.
+        url = (
+            f"{settings.public_base_url.rstrip('/')}/sms/inbound"
+            if settings.public_base_url
+            else str(request.url)
+        )
+        signature = request.headers.get("X-Twilio-Signature", "")
+        if not validate_twilio_signature(
+            settings.twilio_auth_token, signature, url, {k: str(v) for k, v in form.items()}
+        ):
+            logger.warning("rejected inbound SMS with an invalid signature")
+            return Response(twiml(), media_type="application/xml", status_code=403)
+
+    if settings.my_phone_number and From and From != settings.my_phone_number:
+        logger.warning("ignoring inbound SMS from an unexpected number")
+        return Response(twiml(), media_type="application/xml", status_code=403)
+
+    reply = approvals.handle_reply(Body)
+    return Response(twiml(reply), media_type="application/xml")
+
+
+@app.get("/approvals")
+def list_approvals():
+    """Recent proposals and what happened to them -- the audit trail."""
+    store.expire_stale()
+    return JSONResponse(
+        [
+            {
+                "id": a.action_id, "code": a.code, "status": str(a.status),
+                "summary": a.summary, "created_at": a.created_at.isoformat(),
+                "expires_at": a.expires_at.isoformat(),
+                "applied_at": a.applied_at.isoformat() if a.applied_at else None,
+            }
+            for a in store.recent(25)
+        ]
+    )
+
+
 @app.get("/healthz")
 def healthz():
     settings = get_settings()
@@ -197,6 +169,8 @@ def healthz():
         "league_configured": settings.configured,
         "has_credentials": settings.has_credentials,
         "dry_run": settings.dry_run,
+        "approval_channel": approvals.channel.name,
+        "pending_approvals": len(store.pending()),
     }
     if settings.configured:
         try:

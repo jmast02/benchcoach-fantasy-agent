@@ -1,6 +1,6 @@
 """Bench-upgrade arithmetic: the thing that catches free points."""
 
-from api.main import bench_upgrades
+from analysis.optimizer import bench_upgrades
 from espn.models import ELIGIBLE_SLOTS, Player, Position, Slot, Team
 
 
