@@ -90,6 +90,7 @@ def run(
     max_messages: int = 3,
     max_iterations: int = 24,
     effort: str = "medium",
+    tools: list | None = None,
 ) -> RunResult:
     """One agent pass. Returns what it did, including when it did nothing."""
     settings = get_settings()
@@ -111,7 +112,7 @@ def run(
             model=model or settings.agent_model,
             max_tokens=4096,
             system=SYSTEM,
-            tools=ALL_TOOLS,
+            tools=tools or ALL_TOOLS,
             max_iterations=max_iterations,
             thinking={"type": "adaptive"},
             output_config={"effort": effort},

@@ -202,6 +202,56 @@ def cmd_agent(args) -> int:
     return 0
 
 
+def cmd_job(args) -> int:
+    """Run one scheduled job by name, now."""
+    from scheduler.jobs import JOBS, job_by_name, run_job
+
+    if args.name in (None, "list"):
+        print(f"{'job':18} {'when':16} {'kind':7} effort")
+        for j in JOBS:
+            when = f"{j.day} {j.hour:02d}:{j.minute:02d}"
+            print(f"{j.name:18} {when:16} {'digest' if j.digest else 'alert':7} {j.effort}")
+        return 0
+
+    job = job_by_name(args.name)
+    if job is None:
+        print(f"no job named {args.name!r}; try `python -m cli job list`", file=sys.stderr)
+        return 2
+
+    result = run_job(job)
+    print(f"job: {job.name}")
+    print(f"tools used: {', '.join(result.tool_calls) or 'none'}")
+    print(f"messages sent: {result.messages_sent}")
+    print(f"tokens: in={result.input_tokens:,} out={result.output_tokens:,} "
+          f"(~${result.cost_estimate():.3f})")
+    if result.proposals:
+        for a in result.proposals:
+            print(f"  proposal [{a.code}] {a.summary}")
+    print("\n--- summary ---")
+    print(result.summary or "(none)")
+    return 0
+
+
+def cmd_schedule(args) -> int:
+    """Run the scheduler in the foreground."""
+    import logging
+
+    from scheduler.jobs import DEFAULT_TZ, JOBS, build_scheduler
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    tz = args.timezone or DEFAULT_TZ
+    print(f"scheduling {len(JOBS)} jobs in {tz}:")
+    for j in JOBS:
+        print(f"  {j.name:18} {j.day} {j.hour:02d}:{j.minute:02d}")
+    print("\nctrl-c to stop\n")
+    scheduler = build_scheduler(tz)
+    try:
+        scheduler.start()
+    except (KeyboardInterrupt, SystemExit):
+        print("\nstopped")
+    return 0
+
+
 def cmd_listen(args) -> int:
     """
     Watch for replies and apply them.
@@ -278,6 +328,14 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("reply", help="simulate an inbound SMS reply")
     p.add_argument("text")
     p.set_defaults(func=cmd_reply)
+
+    p = sub.add_parser("job", help="run a scheduled job now, or list them")
+    p.add_argument("name", nargs="?", help="job name, or 'list'")
+    p.set_defaults(func=cmd_job)
+
+    p = sub.add_parser("schedule", help="run all jobs on their schedule")
+    p.add_argument("--timezone", help="default America/New_York")
+    p.set_defaults(func=cmd_schedule)
 
     p = sub.add_parser("agent", help="run the agent")
     p.add_argument("--ask", help="a specific question instead of the routine check")

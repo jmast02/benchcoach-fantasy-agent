@@ -381,6 +381,27 @@ def send_insight(message: str) -> str:
     return "Sent."
 
 
+@beta_tool
+def send_digest(message: str) -> str:
+    """Send the weekly digest. Only available on digest runs.
+
+    Unlike `send_insight`, this is expected to always be used and is not
+    subject to the per-run message limit -- the digest is a scheduled
+    touchpoint the user has asked for, not an interruption.
+
+    Args:
+        message: The digest. A few short sections, specific numbers, no
+            preamble. Written to be read on a phone.
+    """
+    ctx = _require()
+    try:
+        ctx.approvals.channel.send(message)
+    except Exception as exc:
+        return f"Could not send: {exc}"
+    ctx.insights.append(message)
+    return "Digest sent."
+
+
 READ_TOOLS = [
     get_my_roster,
     get_player_detail,
@@ -392,3 +413,7 @@ READ_TOOLS = [
 ]
 ACTION_TOOLS = [propose_lineup_swap, send_insight]
 ALL_TOOLS = READ_TOOLS + ACTION_TOOLS
+
+# The digest swaps send_insight for send_digest: a digest run is a single
+# scheduled message, not a judgement call about whether to interrupt.
+DIGEST_TOOLS = READ_TOOLS + [send_digest]
