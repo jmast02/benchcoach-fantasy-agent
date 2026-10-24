@@ -72,6 +72,29 @@
 </div>
 {% endif %}
 
+{% if movers %}
+<div class="panel">
+  <h2>Who's hot, who's fading</h2>
+  <p class="hint">
+    Usage, not points &mdash; snap share and role share are far more stable
+    week to week than fantasy output. Through week {{ analysis_week }}
+    (the last one that finished).
+  </p>
+  {% for t in movers %}
+    <div class="alert {% if t.direction() == 'rising' %}zero{% else %}risky{% endif %}">
+      <div class="who">
+        {{ t.name }}
+        <span class="mono" style="color:var(--muted)">({{ t.position }}{% if t.team %}, {{ t.team }}{% endif %})</span>
+        <span class="mono" style="color:{% if t.direction() == 'rising' %}var(--accent){% else %}var(--risky){% endif %}">
+          {{ t.direction() }}
+        </span>
+      </div>
+      <div class="detail">{{ t.headline() }}</div>
+    </div>
+  {% endfor %}
+</div>
+{% endif %}
+
 <div class="grid">
   <div>
     <div class="panel">
@@ -94,6 +117,9 @@
             <td>{{ p.name }}
               {% if p.is_out %}<span class="status out">OUT</span>
               {% elif p.is_risky %}<span class="status risky">{{ p.injury_status[:1] }}</span>{% endif %}
+              {% set t = trends.get(p.player_id) %}
+              {% if t and t.direction() == 'rising' %}<span class="trend up">&#9650;</span>
+              {% elif t and t.direction() == 'fading' %}<span class="trend down">&#9660;</span>{% endif %}
             </td>
             <td class="num">{{ '%.1f'|format(p.projected_points or 0) }}</td>
             <td class="num">{% if p.actual_points is not none %}{{ '%.1f'|format(p.actual_points) }}{% else %}&ndash;{% endif %}</td>
@@ -107,6 +133,9 @@
             <td>{{ p.name }}
               {% if p.is_out %}<span class="status out">OUT</span>
               {% elif p.is_risky %}<span class="status risky">{{ p.injury_status[:1] }}</span>{% endif %}
+              {% set t = trends.get(p.player_id) %}
+              {% if t and t.direction() == 'rising' %}<span class="trend up">&#9650;</span>
+              {% elif t and t.direction() == 'fading' %}<span class="trend down">&#9660;</span>{% endif %}
             </td>
             <td class="num">{{ '%.1f'|format(p.projected_points or 0) }}</td>
             <td class="num">&ndash;</td>

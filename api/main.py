@@ -28,6 +28,8 @@ from approvals.store import ActionStore
 from config import get_settings
 from espn.client import ESPNClient, ESPNError
 from espn.models import League, Slot
+from stats.nflverse import last_complete_week
+from stats.trends import roster_trends
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +82,23 @@ def index(request: Request):
     )
 
     upgrades = bench_upgrades(team) if team else []
+
+    # Usage trends come from nflverse, anchored on the last completed week.
+    # Wrapped because this is a network fetch on a cold cache and the page is
+    # still worth rendering without it.
+    trends: dict = {}
+    analysis_week = None
+    if team:
+        try:
+            analysis_week = last_complete_week()
+            trends = roster_trends([p.player_id for p in team.roster], analysis_week)
+        except Exception as exc:
+            logger.warning("could not load usage trends: %s", exc)
+
+    movers = sorted(
+        (t for t in trends.values() if t.direction() in ("rising", "fading")),
+        key=lambda t: (t.direction() != "rising", t.name),
+    )
     standings = sorted(league.teams, key=lambda t: (-t.wins, -t.points_for))
     matchup = league.matchup_for(team.team_id) if team else None
     opponent = None
@@ -100,6 +119,9 @@ def index(request: Request):
             "problems": problems,
             "alternatives": alternatives,
             "upgrades": upgrades,
+            "trends": trends,
+            "movers": movers,
+            "analysis_week": analysis_week,
             "standings": standings,
             "opponent": opponent,
             "settings": settings,
