@@ -115,25 +115,55 @@ questionable player who'll play from one who won't.
 ## Architecture
 
 ```
-  ESPN (league, rosters, matchups, waivers, full schedule)  ─┐
-  nflverse (snaps, targets, injuries, Vegas lines)          ─┤
-                                                             ▼
-                        ┌──── analysis/ ─────┐    deterministic, tested:
-                        │ optimizer  startsit│    projections, eligibility,
-                        │ matchup    schedule│    trends, playoff math
-                        │ standings  intel   │
-                        └─────────┬──────────┘
-                                  ▼
-                        ┌──── agent/ ────────┐    16 read-only tools,
-                        │ judges, triages,   │    2 that have consequences
-                        │ explains           │
-                        └─────────┬──────────┘
-                                  ▼
-                        ┌──── approvals/ ────┐    nothing executes without
-                        │ pending → Telegram │    an explicit human yes
-                        │ [✅ Do it] [✕ Skip]│
-                        └────────────────────┘
+                          ┌──────────────────────────┐
+   ESPN Fantasy API       │   nflverse (open data)   │
+   (undocumented)         │   parquet on GitHub      │
+          │               └────────────┬─────────────┘
+          │                            │
+   league, rosters,            snap counts, target share,
+   matchups, waivers,          injury reports w/ practice,
+   full schedule               Vegas spreads & totals
+          │                            │
+          └─────────────┬──────────────┘
+                        ▼
+        ╔═══════════════════════════════════════╗
+        ║           analysis/                   ║   DETERMINISTIC
+        ║  optimizer   lineup math, eligibility ║   exact answers,
+        ║  trends      snap/target windows      ║   covered by tests,
+        ║  matchup     def-vs-pos, game script  ║   no model involved
+        ║  startsit    floor/ceiling, stance    ║
+        ║  standings   playoff race, leverage   ║
+        ║  league_intel blocking, scouting      ║
+        ╚═══════════════════╤═══════════════════╝
+                            │  exposed as 16 tools
+                            ▼
+        ╔═══════════════════════════════════════╗
+        ║             agent/                    ║   JUDGEMENT
+        ║  Claude Opus + tool loop              ║   ambiguity, triage,
+        ║  · what does "questionable" mean      ║   explanation,
+        ║  · is thin data sayable               ║   multi-step reasoning
+        ║  · is this worth interrupting for     ║
+        ║  proposes — never executes            ║
+        ╚═══════════════════╤═══════════════════╝
+                            ▼
+        ╔═══════════════════════════════════════╗
+        ║           approvals/                  ║   THE GATE
+        ║  pending action → Telegram            ║   nothing happens
+        ║  [✅ Do it]  [✕ Skip]                 ║   without a human yes
+        ║  expires before kickoff · audit log   ║
+        ╚═══════════════════╤═══════════════════╝
+                            ▼
+                      your phone
+                            │
+                   you tap, you apply it
+             (the agent never writes to ESPN)
 ```
+
+**→ [ARCHITECTURE.md](ARCHITECTURE.md)** explains every piece of this in
+detail: how the agent loop actually works, why the deterministic/model split
+is the central decision, the identity-matching problem between ESPN and
+nflverse, and a log of seven bugs that ran clean while producing wrong
+answers.
 
 **Data sources, all free:** ESPN's fantasy API (undocumented, cookie auth) for
 league state; [nflverse](https://github.com/nflverse) for snap counts, target
@@ -195,6 +225,7 @@ about **$0.90 a week**. The model is the only paid component.
 ```bash
 make test     # 72 tests
 make lint
+make help     # every target
 ```
 
 Tests cover the parts where a silent error is expensive: slot and position
