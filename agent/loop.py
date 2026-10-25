@@ -115,7 +115,14 @@ def run(
     summary = ""
 
     try:
-        anthropic_client = anthropic.Anthropic()
+        key = settings.resolved_anthropic_key
+        if not key:
+            raise RuntimeError(
+                "No Anthropic API key. Set ANTHROPIC_API_KEY in .env — note "
+                "that scheduled runs have no shell, so exporting it in your "
+                "profile is not enough."
+            )
+        anthropic_client = anthropic.Anthropic(api_key=key)
         runner = anthropic_client.beta.messages.tool_runner(
             model=model or settings.agent_model,
             max_tokens=4096,

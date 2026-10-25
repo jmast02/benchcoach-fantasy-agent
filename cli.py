@@ -256,6 +256,7 @@ def cmd_due(args) -> int:
         print(f"{now:%a %H:%M}: nothing scheduled near now")
         return 0
 
+    failures: list[tuple[str, Exception]] = []
     for job in due:
         print(f"{now:%a %H:%M}: running {job.name}")
         try:
@@ -265,6 +266,28 @@ def cmd_due(args) -> int:
                 print(f"  {result.summary[:400]}")
         except Exception as exc:
             print(f"  FAILED: {exc}", file=sys.stderr)
+            failures.append((job.name, exc))
+
+    # Tell the user it broke. A scheduled agent that fails quietly is
+    # indistinguishable from one that decided there was nothing to say -- and
+    # the whole design depends on silence meaning "nothing to report". This
+    # path deliberately avoids the model, so it still works when the model is
+    # exactly what is broken.
+    if failures:
+        try:
+            from approvals.channels import build_channel
+            from config import get_settings
+
+            lines = ["Benchcoach hit an error and could not run:"]
+            for name, exc in failures:
+                lines.append(f"- {name}: {type(exc).__name__}: {str(exc)[:160]}")
+            lines.append("")
+            lines.append("Check logs/agent.err. No analysis ran.")
+            build_channel(get_settings()).send("\n".join(lines))
+            print("  (failure reported over the notification channel)")
+        except Exception as notify_exc:
+            print(f"  could not report the failure: {notify_exc}", file=sys.stderr)
+        return 1
     return 0
 
 

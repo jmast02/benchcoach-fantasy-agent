@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,6 +10,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="BENCHCOACH_", env_file=".env", extra="ignore"
     )
+
+    # ANTHROPIC_API_KEY has no BENCHCOACH_ prefix, so it needs an explicit
+    # alias to be picked up from the same .env file.
+    model_config["populate_by_name"] = True
 
     league_id: int | None = None
     season: int = 2026
@@ -26,6 +31,12 @@ class Settings(BaseSettings):
     # The agent's model. Opus for judgement calls; this is the only paid
     # component in the project.
     agent_model: str = "claude-opus-5"
+
+    # Read through settings rather than left to the SDK's environment lookup.
+    # Under launchd there is no shell, nothing sources .env, and os.environ is
+    # bare -- so a key that works in every manual test disappears the moment
+    # the scheduler runs it for real.
+    anthropic_api_key: str | None = Field(default=None, alias="ANTHROPIC_API_KEY")
 
     # --- Telegram (preferred: free, instant, real buttons) ------------------
     # Replies arrive by long-polling, so unlike SMS this needs no public URL
@@ -63,6 +74,13 @@ class Settings(BaseSettings):
                 self.my_phone_number,
             ]
         )
+
+    @property
+    def resolved_anthropic_key(self) -> str | None:
+        """The key from .env, falling back to the ambient environment."""
+        import os
+
+        return self.anthropic_api_key or os.environ.get("ANTHROPIC_API_KEY")
 
     @property
     def has_credentials(self) -> bool:
