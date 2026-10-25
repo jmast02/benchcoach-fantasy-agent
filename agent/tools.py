@@ -26,6 +26,7 @@ from analysis.league_intel import (
     scout_opponent,
     waiver_competition,
 )
+from analysis.live import live_matchup
 from analysis.optimizer import bench_upgrades
 from analysis.schedule import defense_schedule_outlook, offense_strength
 from analysis.standings import my_rivals, playoff_picture, trade_leverage
@@ -362,6 +363,22 @@ def compare_start_sit(player_a: str, player_b: str) -> str:
         strategy = matchup_strategy(ctx.team, report.opponent)
         blocks.append(f"This week's stance: {strategy.stance} — {strategy.advice()}")
     return "\n\n".join(blocks)
+
+
+@beta_tool
+def get_live_matchup() -> str:
+    """Live score: points already banked, and who is still to play on each side.
+
+    Use this for any "how am I doing" question during or after game days.
+    ESPN's matchup totals stay at 0.0 until a week finalises, so this sums
+    actual player scores instead. It also separates points on the board from
+    points still in play, which is what decides whether a deficit matters.
+    """
+    ctx = _require()
+    state = live_matchup(ctx.league, ctx.team.team_id)
+    if state is None:
+        return "No matchup this week."
+    return state.describe()
 
 
 @beta_tool
@@ -736,6 +753,7 @@ READ_TOOLS = [
     get_bench_upgrades,
     analyze_player,
     compare_start_sit,
+    get_live_matchup,
     get_matchup_strategy,
     get_opponent_lineup,
     get_available_players,
