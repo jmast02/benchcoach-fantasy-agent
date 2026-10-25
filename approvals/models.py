@@ -26,6 +26,7 @@ class ActionStatus(StrEnum):
 
 class ActionKind(StrEnum):
     LINEUP_SWAP = "lineup_swap"
+    WAIVER_CLAIM = "waiver_claim"
 
 
 # Easily-confused characters removed: no 0/O, 1/I/L, 5/S, 8/B, Z/2. A code gets
@@ -87,6 +88,38 @@ class LineupSwap:
 
 
 @dataclass
+class WaiverClaim:
+    """Acquire an available player, dropping one you roster to make room."""
+
+    add_player_id: int
+    add_name: str
+    add_position: str
+    add_projected: float
+    drop_player_id: int
+    drop_name: str
+    drop_position: str
+    drop_projected: float
+    percent_owned: float | None = None
+
+    @property
+    def gain(self) -> float:
+        return round(self.add_projected - self.drop_projected, 1)
+
+    def to_dict(self) -> dict:
+        return {
+            "add_player_id": self.add_player_id, "add_name": self.add_name,
+            "add_position": self.add_position, "add_projected": self.add_projected,
+            "drop_player_id": self.drop_player_id, "drop_name": self.drop_name,
+            "drop_position": self.drop_position, "drop_projected": self.drop_projected,
+            "percent_owned": self.percent_owned,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> WaiverClaim:
+        return cls(**data)
+
+
+@dataclass
 class PendingAction:
     kind: ActionKind
     summary: str
@@ -112,6 +145,12 @@ class PendingAction:
     def swap(self) -> LineupSwap | None:
         if self.kind is ActionKind.LINEUP_SWAP:
             return LineupSwap.from_dict(self.payload)
+        return None
+
+    @property
+    def claim(self) -> WaiverClaim | None:
+        if self.kind is ActionKind.WAIVER_CLAIM:
+            return WaiverClaim.from_dict(self.payload)
         return None
 
     def message(self) -> str:

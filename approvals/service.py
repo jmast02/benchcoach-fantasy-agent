@@ -18,7 +18,13 @@ from dataclasses import dataclass
 from enum import StrEnum
 
 from approvals.channels import Channel
-from approvals.models import ActionKind, ActionStatus, LineupSwap, PendingAction
+from approvals.models import (
+    ActionKind,
+    ActionStatus,
+    LineupSwap,
+    PendingAction,
+    WaiverClaim,
+)
 from approvals.store import ActionStore
 
 logger = logging.getLogger(__name__)
@@ -165,6 +171,49 @@ class ApprovalService:
                     self.channel.send(action.message())
             except Exception as exc:
                 logger.error("could not send approval request: %s", exc)
+                self.store.set_status(
+                    action.action_id, ActionStatus.FAILED, error=str(exc)
+                )
+                raise
+        return action
+
+    def propose_claim(
+        self,
+        claim: WaiverClaim,
+        *,
+        reason: str,
+        expires_at: dt.datetime,
+        send: bool = True,
+    ) -> PendingAction | None:
+        """Record a proposed waiver claim and ask about it."""
+        self.store.expire_stale()
+
+        key = f'"add_player_id": {claim.add_player_id}'
+        if self.store.has_open_duplicate(ActionKind.WAIVER_CLAIM, key):
+            logger.info("skipping duplicate claim for %s", claim.add_name)
+            return None
+
+        action = PendingAction(
+            kind=ActionKind.WAIVER_CLAIM,
+            summary=(
+                f"Claim {claim.add_name} ({claim.add_position}), "
+                f"drop {claim.drop_name} ({claim.gain:+.1f})"
+            ),
+            reason=reason,
+            payload=claim.to_dict(),
+            expires_at=expires_at,
+        )
+        self.store.create(action)
+
+        if send:
+            try:
+                sender = getattr(self.channel, "send_approval", None)
+                if callable(sender):
+                    sender(action)
+                else:
+                    self.channel.send(action.message())
+            except Exception as exc:
+                logger.error("could not send claim request: %s", exc)
                 self.store.set_status(
                     action.action_id, ActionStatus.FAILED, error=str(exc)
                 )

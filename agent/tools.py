@@ -30,9 +30,10 @@ from analysis.optimizer import bench_upgrades
 from analysis.schedule import defense_schedule_outlook, offense_strength
 from analysis.standings import my_rivals, playoff_picture, trade_leverage
 from analysis.startsit import matchup_strategy, outlook
-from approvals.models import LineupSwap
+from approvals.models import LineupSwap, WaiverClaim
 from espn.models import DEDICATED_SLOT, League, Position, Team
 from stats.nflverse import injury_detail
+from stats.trends import player_trend
 
 logger = logging.getLogger(__name__)
 
@@ -531,6 +532,137 @@ def propose_lineup_swap(bench_player: str, starting_player: str, reason: str) ->
 
 
 @beta_tool
+def analyze_available_player(player_name: str, position: str) -> str:
+    """Full workup on a player who is NOT on your roster but is available.
+
+    Same evidence as `analyze_player` -- matchup, game script, floor and
+    ceiling, usage trend -- for someone in the free-agent pool. Use this before
+    proposing a claim, so the recommendation rests on more than a projection.
+
+    Args:
+        player_name: Full or partial name, e.g. "Goedert".
+        position: QB, RB, WR, TE, K or DST.
+    """
+    ctx = _require()
+    pos = {
+        "QB": Position.QB, "RB": Position.RB, "WR": Position.WR,
+        "TE": Position.TE, "K": Position.K, "DST": Position.DST,
+        "D/ST": Position.DST,
+    }.get(position.upper().strip())
+    if pos is None:
+        return f"Unknown position {position!r}."
+
+    try:
+        pool = ctx.client.free_agents(
+            positions=(pos,), limit=40, week=ctx.league.current_week
+        )
+    except Exception as exc:
+        return f"Could not load the free-agent pool: {exc}"
+
+    needle = player_name.strip().lower()
+    found = next((p for p in pool if needle in p.name.lower()), None)
+    if found is None:
+        return (
+            f"No available {position} matching {player_name!r}. "
+            "They may be rostered by another team."
+        )
+
+    report = outlook(found, week=ctx.league.current_week, trends={}).describe()
+    extras = []
+    trend = player_trend(found.player_id, ctx.week)
+    if trend:
+        extras.append(f"  usage direction: {trend.direction()} ({trend.games} games)")
+        if trend.snap_pct and trend.snap_pct.has_baseline:
+            extras.append(
+                f"  snap share: {trend.snap_pct.prior:.0f}% -> {trend.snap_pct.recent:.0f}%"
+            )
+        detail = injury_detail(trend.gsis_id, ctx.week)
+        if detail:
+            extras.append(
+                f"  injury report: status={detail.get('report_status') or 'none'}, "
+                f"practice={detail.get('practice_status') or 'unknown'}"
+            )
+    if found.percent_owned is not None:
+        extras.append(
+            f"  owned in {found.percent_owned:.0f}% of leagues "
+            "(high ownership on a free agent usually means a recent drop)"
+        )
+    return report + ("\n" + "\n".join(extras) if extras else "")
+
+
+@beta_tool
+def propose_waiver_claim(
+    add_player: str, add_position: str, drop_player: str, reason: str
+) -> str:
+    """Propose claiming an available player and dropping one of yours.
+
+    This does NOT execute anything. It records the proposal and asks the user,
+    who makes the claim themselves. Use it when someone available is clearly
+    better than a player you are carrying -- not for marginal upgrades.
+
+    Args:
+        add_player: Name of the available player to claim.
+        add_position: Their position (QB, RB, WR, TE, K, DST).
+        drop_player: Name of the rostered player to drop. Prefer someone who
+            is injured, on a bye with no future role, or genuinely surplus.
+        reason: One or two sentences with the specific numbers that justify it,
+            including why the drop is safe.
+    """
+    ctx = _require()
+    if len(ctx.proposals) + len(ctx.insights) >= ctx.max_messages:
+        return "Message limit reached for this run. Not sent."
+
+    pos = {
+        "QB": Position.QB, "RB": Position.RB, "WR": Position.WR,
+        "TE": Position.TE, "K": Position.K, "DST": Position.DST,
+        "D/ST": Position.DST,
+    }.get(add_position.upper().strip())
+    if pos is None:
+        return f"Unknown position {add_position!r}."
+
+    try:
+        pool = ctx.client.free_agents(
+            positions=(pos,), limit=40, week=ctx.league.current_week
+        )
+    except Exception as exc:
+        return f"Could not load the free-agent pool: {exc}"
+
+    needle = add_player.strip().lower()
+    incoming = next((p for p in pool if needle in p.name.lower()), None)
+    if incoming is None:
+        return f"No available {add_position} matching {add_player!r}."
+
+    outgoing = _find_player(drop_player)
+    if outgoing is None:
+        return f"No rostered player matching {drop_player!r}."
+    if outgoing.is_starting:
+        return (
+            f"{outgoing.name} is in the starting lineup. Drop a bench player, "
+            "or move them to the bench first."
+        )
+
+    claim = WaiverClaim(
+        add_player_id=incoming.player_id, add_name=incoming.name,
+        add_position=incoming.position_name,
+        add_projected=incoming.projected_points or 0.0,
+        drop_player_id=outgoing.player_id, drop_name=outgoing.name,
+        drop_position=outgoing.position_name,
+        drop_projected=outgoing.projected_points or 0.0,
+        percent_owned=incoming.percent_owned,
+    )
+    action = ctx.approvals.propose_claim(
+        claim,
+        reason=reason,
+        expires_at=dt.datetime.now(dt.UTC) + dt.timedelta(hours=12),
+    )
+    if action is None:
+        return "An identical claim is already awaiting their answer. Not sent again."
+
+    ctx.proposals.append(action)
+    return f"Claim proposal sent (code {action.code}). They make the claim themselves."
+
+
+@beta_tool
 def send_insight(message: str) -> str:
     """Send the user a short note worth knowing but not requiring a decision.
 
@@ -610,11 +742,12 @@ READ_TOOLS = [
     get_league_situation,
     get_waiver_competition,
     get_schedule_outlook,
+    analyze_available_player,
     get_playoff_picture,
     get_my_rivals,
     get_trade_postures,
 ]
-ACTION_TOOLS = [propose_lineup_swap, send_insight]
+ACTION_TOOLS = [propose_lineup_swap, propose_waiver_claim, send_insight]
 ALL_TOOLS = READ_TOOLS + ACTION_TOOLS
 
 # The digest swaps send_insight for send_digest: a digest run is a single
