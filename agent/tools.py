@@ -51,6 +51,8 @@ class AgentContext:
     proposals: list = field(default_factory=list)
     insights: list = field(default_factory=list)
     max_messages: int = 3
+    job_name: str | None = None
+    previous_briefs: list = field(default_factory=list)
 
 
 _ctx: AgentContext | None = None
@@ -549,16 +551,41 @@ def send_insight(message: str) -> str:
 
 
 @beta_tool
-def send_digest(message: str) -> str:
-    """Send the weekly digest. Only available on digest runs.
+def get_previous_briefs() -> str:
+    """What you already told this user in recent briefs.
 
-    Unlike `send_insight`, this is expected to always be used and is not
-    subject to the per-run message limit -- the digest is a scheduled
-    touchpoint the user has asked for, not an interruption.
+    Read this before writing a new one. A daily brief that repeats yesterday's
+    content stops being read within a week, so the job is to say what has
+    *changed* -- and to be brief when little has.
+    """
+    ctx = _require()
+    history = ctx.previous_briefs
+    if not history:
+        return "No previous briefs. This is the first one."
+    out = []
+    for when, body in history:
+        ago = dt.datetime.now(dt.UTC) - when
+        hours = int(ago.total_seconds() // 3600)
+        label = f"{hours}h ago" if hours < 48 else f"{hours // 24}d ago"
+        out.append(f"--- sent {label} ---\n{body}")
+    return "\n\n".join(out)
+
+
+@beta_tool
+def send_digest(message: str) -> str:
+    """Send the brief. Only available on brief/digest runs.
+
+    Unlike `send_insight`, this is expected to be used and is not subject to
+    the per-run message limit -- a scheduled brief is a touchpoint the user
+    asked for, not an interruption.
+
+    Length should track how much actually changed. A day with real news earns
+    a few short sections; a quiet day earns two lines. Padding a quiet day to
+    look substantial is how a daily brief becomes wallpaper.
 
     Args:
-        message: The digest. A few short sections, specific numbers, no
-            preamble. Written to be read on a phone.
+        message: The brief. Specific numbers, no preamble, written to be read
+            on a phone.
     """
     ctx = _require()
     try:
@@ -566,7 +593,9 @@ def send_digest(message: str) -> str:
     except Exception as exc:
         return f"Could not send: {exc}"
     ctx.insights.append(message)
-    return "Digest sent."
+    if ctx.job_name:
+        ctx.approvals.store.record_brief(ctx.job_name, message)
+    return "Brief sent and recorded, so tomorrow's run can see it."
 
 
 READ_TOOLS = [
@@ -590,4 +619,4 @@ ALL_TOOLS = READ_TOOLS + ACTION_TOOLS
 
 # The digest swaps send_insight for send_digest: a digest run is a single
 # scheduled message, not a judgement call about whether to interrupt.
-DIGEST_TOOLS = READ_TOOLS + [send_digest]
+DIGEST_TOOLS = READ_TOOLS + [get_previous_briefs, send_digest]

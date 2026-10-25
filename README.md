@@ -99,16 +99,25 @@ question. Running the same check seven times would be noise.
 
 | when | asks |
 |---|---|
-| Tue 9:00 | what just came off waivers |
-| **Tue 9:30** | **weekly digest — the one guaranteed message** |
-| Wed 17:00 | anything worth claiming before the deadline |
-| Thu 17:00 | anyone compromised in a Thursday slot |
+| **Daily 9:00** | **morning brief — what changed since yesterday** |
+| Wed 17:00 | anything worth claiming before the waiver deadline |
+| Thu 17:00 | anyone compromised in a Thursday-night slot |
 | Fri 17:00 | final practice reports — the real read on *questionable* |
 | Sun 11:30 | inactives, ~90 min before kickoff — the critical one |
 | Sun 16:00 | late window |
 
-Friday is the slot most setups miss, and it's the only one that can tell a
-questionable player who'll play from one who won't.
+The morning brief runs every day with a **day-specific focus** — Monday looks
+for injuries from yesterday's games, Tuesday for what waivers turned up,
+Wednesday is the decision day, Saturday expects to find nothing.
+
+Crucially, **it remembers what it already told you.** Each brief reads the
+previous ones and reports what *changed*, which is what keeps a daily message
+from becoming wallpaper. Measured on two consecutive runs with nothing new in
+between: the first was 485 characters, the second was 165 and explicitly
+declined to restate a trend it had already filed as watch-don't-act.
+
+Friday's evening slot is the one most setups miss — it's the only one that can
+tell a questionable player who'll play from one who won't.
 
 ---
 

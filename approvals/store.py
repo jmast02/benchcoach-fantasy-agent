@@ -35,6 +35,17 @@ CREATE TABLE IF NOT EXISTS actions (
 );
 CREATE INDEX IF NOT EXISTS ix_actions_status ON actions(status);
 CREATE INDEX IF NOT EXISTS ix_actions_code   ON actions(code);
+
+-- What the agent has already told the user. A daily brief that cannot
+-- remember yesterday repeats itself, and a message that repeats itself stops
+-- being read within a week.
+CREATE TABLE IF NOT EXISTS briefs (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    job        TEXT NOT NULL,
+    body       TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_briefs_job ON briefs(job, id);
 """
 
 
@@ -166,6 +177,23 @@ class ActionStore:
         )
         self._conn.commit()
         return cursor.rowcount
+
+    # ---------------------------------------------------------- brief memory
+
+    def record_brief(self, job: str, body: str) -> None:
+        self._conn.execute(
+            "INSERT INTO briefs (job, body, created_at) VALUES (?, ?, ?)",
+            (job, body, _iso(dt.datetime.now(dt.UTC))),
+        )
+        self._conn.commit()
+
+    def recent_briefs(self, job: str, limit: int = 3) -> list[tuple[dt.datetime, str]]:
+        """The last few briefs for a job, newest first."""
+        rows = self._conn.execute(
+            "SELECT created_at, body FROM briefs WHERE job = ? ORDER BY id DESC LIMIT ?",
+            (job, limit),
+        ).fetchall()
+        return [(_parse(r["created_at"]), r["body"]) for r in rows]
 
     def has_open_duplicate(self, kind: ActionKind, payload_key: str) -> bool:
         """

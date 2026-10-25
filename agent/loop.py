@@ -49,7 +49,9 @@ class RunResult:
         return round(self.input_tokens / 1e6 * 5 + self.output_tokens / 1e6 * 25, 4)
 
 
-def build_context(*, max_messages: int = 3) -> tuple[AgentContext, ESPNClient]:
+def build_context(
+    *, max_messages: int = 3, job_name: str | None = None
+) -> tuple[AgentContext, ESPNClient]:
     settings = get_settings()
     client = ESPNClient(
         settings.league_id, settings.season,
@@ -70,15 +72,20 @@ def build_context(*, max_messages: int = 3) -> tuple[AgentContext, ESPNClient]:
         logger.warning("usage trends unavailable: %s", exc)
         trends = {}
 
+    approvals = ApprovalService(ActionStore(), build_channel(settings))
     ctx = AgentContext(
         league=league,
         team=team,
         client=client,
-        approvals=ApprovalService(ActionStore(), build_channel(settings)),
+        approvals=approvals,
         week=week,
         dry_run=settings.dry_run,
         trends=trends,
         max_messages=max_messages,
+        job_name=job_name,
+        previous_briefs=(
+            approvals.store.recent_briefs(job_name, limit=2) if job_name else []
+        ),
     )
     return ctx, client
 
@@ -91,10 +98,11 @@ def run(
     max_iterations: int = 24,
     effort: str = "medium",
     tools: list | None = None,
+    job_name: str | None = None,
 ) -> RunResult:
     """One agent pass. Returns what it did, including when it did nothing."""
     settings = get_settings()
-    ctx, client = build_context(max_messages=max_messages)
+    ctx, client = build_context(max_messages=max_messages, job_name=job_name)
     set_context(ctx)
 
     task = instruction or (

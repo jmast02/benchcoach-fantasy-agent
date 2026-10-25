@@ -20,7 +20,8 @@
    - [Tools Are Just Functions](#54-tools-are-just-functions)
    - [The Approval Gate](#55-the-approval-gate)
    - [Telegram, and Why Not SMS](#56-telegram-and-why-not-sms)
-   - [launchd — Running Unattended](#57-launchd--running-unattended)
+   - [Brief Memory](#57-brief-memory)
+   - [launchd — Running Unattended](#58-launchd--running-unattended)
 6. [What a Projection Doesn't Know](#6-what-a-projection-doesnt-know)
 7. [File-by-File Breakdown](#7-file-by-file-breakdown)
 8. [Things That Broke, and Why](#8-things-that-broke-and-why)
@@ -300,9 +301,36 @@ forgiving parser (`y`, `ok`, `do it`, `nah`, `no thanks` all understood) that
 approval silently changes your lineup while misreading a real "yes" costs one
 more message.
 
-### 5.7 launchd — Running Unattended
+### 5.7 Brief Memory
 
-Seven slots, one launchd entry each, rather than one long-running process.
+A daily message that cannot remember yesterday repeats itself, and a message
+that repeats itself stops being read within a week. That is a product failure,
+not a cosmetic one.
+
+So every brief is written to a `briefs` table, and the next run reads the last
+two before writing anything. The instruction is explicit: *report what changed,
+and if little did, send two lines and stop.*
+
+Measured on two consecutive runs with nothing new in between:
+
+| | length | behaviour |
+|---|---|---|
+| first | 485 chars | full brief — matchup, usage trend, stance |
+| second | 165 chars | "nothing's changed", and said so in two lines |
+
+The second run explicitly declined to restate a usage trend it had already
+filed as watch-don't-act. That is the whole feature: the agent is accountable
+to its own previous output, which is a different and more useful thing than
+being stateless.
+
+The morning brief also carries a **day-specific focus** injected into its
+instruction — Monday hunts for injuries from yesterday's games, Wednesday is
+the decision day, Saturday expects to find nothing. Running the same survey
+seven times would be noise; asking seven different questions is coverage.
+
+### 5.8 launchd — Running Unattended
+
+Twelve slots, one launchd entry each, rather than one long-running process.
 
 A persistent scheduler is the obvious design and the wrong one on a laptop: it
 dies when the machine sleeps and silently never returns, so the failure
